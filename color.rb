@@ -173,103 +173,12 @@ T = Matrix[
   [ 0.00032594, 0.001107914, 0.005677477, 0.01918448, 0.060978641, 0.121348231, 0.184875618, 0.208804428, 0.197318551, 0.147233899, 0.091819086, 0.046485543, 0.022982618, 0.00665036, -0.005816014, -0.012450334, -0.015524259, -0.016712927, -0.01570093, -0.013647887, -0.011317812, -0.008077223, -0.005863171, -0.003943485, -0.002490472, -0.001440876, -0.000852895, -0.000458929, -0.000248389, -0.000129773, -6.41985 * (10 ** -5), -2.71982 * (10 ** -5), -1.38913 * (10 ** -5), -7.35203 * (10 ** -6), -3.05024 * (10 ** -6), -1.71858 * (10 ** -6) ]
 ]
 
-# Not used
-# 375nm to 735nm
-ILD_5nm = [
-  51.0323,
-  49.9755,
-  52.3118,
-  54.6482,
-  68.7015,
-  82.7549,
-  87.1204,
-  91.486,
-  92.4589,
-  93.4318,
-  90.0570,
-  86.6823,
-  95.7736,
-  104.8649,
-  110.9362,
-  117.0076,
-  117.4099,
-  117.8122,
-  116.3365,
-  114.8609,
-  115.3919,
-  115.9229,
-  112.3668,
-  108.8107,
-  109.0826,
-  109.3545,
-  108.5781,
-  107.8017,
-  106.2957,
-  104.7898,
-  106.2396,
-  107.6895,
-  106.0475,
-  104.4055,
-  104.2258,
-  104.0462,
-  102.0231,
-  100.0,
-  98.1671,
-  96.3342,
-  96.0611,
-  95.788,
-  92.2368,
-  88.6856,
-  89.3459,
-  90.0062,
-  89.8026,
-  89.5991,
-  88.6489,
-  87.6987,
-  85.4936,
-  83.2886,
-  83.4939,
-  83.6992,
-  81.8630,
-  80.0268,
-  80.1207,
-  80.2146,
-  81.2462,
-  82.2778,
-  80.2810,
-  78.2842,
-  74.0027,
-  69.7213,
-  70.6652,
-  71.6091,
-  72.9790,
-  74.3490,
-  67.9765,
-  61.6040,
-  65.7448,
-  69.8856,
-  72.4863
-]
-
-# Not used
-ILD_10nm = []
-
-# Not used
-(0...((ILD_5nm.size / 2) - 1)).each do |index|
-  reference_point = (index * 2) + 1
-
-  ILD_10nm[index] = ((
-    ILD_5nm[reference_point - 1] +
-    ( ILD_5nm[reference_point] * 2) +
-    ILD_5nm[reference_point + 1]
-  ) / 4.0)
-end
-
 mixing_ratios_to_attempt = [
   [1, 1],
   [2, 1],
   [3, 2],
-  [3, 1]
+  [3, 1],
+  [4, 1]
 ]
 
 COLORS = []
@@ -379,16 +288,27 @@ def find_inverse_curve(target_color, other_color, mixing_ratios)
   matrix_from_one_dimensional_array(inverse_curve_as_a)
 end
 
-# Not used
-def illuminance_curve_under_illuminant_d(reflectance_curve)
-  matrix_from_one_dimensional_array(reflectance_curve.map.with_index { |entry, index| entry * ILD_10nm[index]})
+puts "Nearest colors:"
+for i in 0..3
+  puts "#{i}: #{
+    if sorted_colors[i][:hex] == target_color[:hex]
+      "EXACT MATCH"
+    else
+      ""
+    end
+  }##{sorted_colors[i][:hex]} #{sorted_colors[i][:name]}"
+end
+puts
+
+# Bail out if safe
+if sorted_colors[0][:hex] == target_color[:hex]
+  puts "Exact matches found"
+  exit
+elsif Color::Comparison.distance(sorted_colors[0][:color_rgb], target_color[:color_rgb]) < 2.3
+  puts "Nearest color is not noticeably different than target color"
+  exit
 end
 
-puts "Nearest colors:"
-puts "0: ##{sorted_colors[0][:hex]} #{sorted_colors[0][:name]}"
-puts "1: ##{sorted_colors[1][:hex]} #{sorted_colors[1][:name]}"
-puts "2: ##{sorted_colors[2][:hex]} #{sorted_colors[2][:name]}"
-puts
 puts "Closest mixes:"
 
 nearest_color = sorted_colors[0]
@@ -412,11 +332,16 @@ mixed_colors = mixing_ratios_to_attempt.map do |ratio|
     nearest_mix_color: nearest_mix_color,
     ratio: ratio
   }
-end.sort do |a,b|
+end.sort do |a, b|
   Color::Comparison.distance(target_color[:color_rgb], a[:actual_mix_color_rgb]) <=> Color::Comparison.distance(target_color[:color_rgb], b[:actual_mix_color_rgb])
 end.each do |mix|
   actual_mix = mix[:actual_mix]
   ratio = mix[:ratio]
   mix_hex = "#{actual_mix[0].to_s(16)}#{actual_mix[1].to_s(16)}#{actual_mix[2].to_s(16)}"
-  puts "##{mix_hex} = #{ratio[0].to_i}:#{ratio[1].to_i} #{nearest_color[:name]}:#{mix[:nearest_mix_color][:name]}"
+
+  comparison_description = Color::Comparison.distance(target_color[:color_rgb], mix[:actual_mix_color_rgb])
+  if comparison_description < 2.3
+    comparison_description = "#{comparison_description} (not noticeably different)"
+  end
+  puts "D#{comparison_description}: ##{mix_hex} = #{ratio[0].to_i}:#{ratio[1].to_i} #{nearest_color[:name]}:#{mix[:nearest_mix_color][:name]}"
 end
