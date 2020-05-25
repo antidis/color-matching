@@ -1,5 +1,6 @@
 require 'color-rgb'
 require 'matrix'
+require 'pp'
 
 # Based on this work mostly:
 # http://scottburns.us/subtractive-color-mixture/
@@ -193,12 +194,40 @@ T = Matrix[
   [ 0.00032594, 0.001107914, 0.005677477, 0.01918448, 0.060978641, 0.121348231, 0.184875618, 0.208804428, 0.197318551, 0.147233899, 0.091819086, 0.046485543, 0.022982618, 0.00665036, -0.005816014, -0.012450334, -0.015524259, -0.016712927, -0.01570093, -0.013647887, -0.011317812, -0.008077223, -0.005863171, -0.003943485, -0.002490472, -0.001440876, -0.000852895, -0.000458929, -0.000248389, -0.000129773, -6.41985 * (10 ** -5), -2.71982 * (10 ** -5), -1.38913 * (10 ** -5), -7.35203 * (10 ** -6), -3.05024 * (10 ** -6), -1.71858 * (10 ** -6) ]
 ]
 
-mixing_ratios_to_attempt = [
+MAX_RATIO_PART = 10
+MIXING_RATIOS_TO_ATTEMPT = [
   [1, 1],
   [2, 1],
   [3, 2],
   [3, 1],
-  [4, 1]
+  [4, 1],
+  [4, 3],
+  [5, 1],
+  [5, 2],
+  [5, 3],
+  [5, 4],
+  [6, 1],
+  [6, 5],
+  [7, 1],
+  [7, 2],
+  [7, 3],
+  [7, 4],
+  [7, 5],
+  [7, 6],
+  [8, 1],
+  [8, 3],
+  [8, 5],
+  [8, 7],
+  [9, 1],
+  [9, 2],
+  [9, 4],
+  [9, 5],
+  [9, 7],
+  [9, 8],
+  [10, 1],
+  [10, 3],
+  [10, 7],
+  [10, 9]
 ]
 
 COLORS = []
@@ -283,12 +312,13 @@ def reflectance_curve_for_color(color)
 end
 
 def curve_to_rgb(curve)
-  (T * curve).to_a.flatten.map { |component| (component * 255).to_i }
+  (T * curve).to_a.flatten.map { |component| [((component.real? ? component : component.real) * 255).to_i, 255.0].min }
 end
 
 def find_inverse_curve(target_color, other_color, mixing_ratios)
   target_curve_as_a = reflectance_curve_for_color(target_color).to_a.flatten
   other_curve_as_a = reflectance_curve_for_color(other_color).to_a.flatten
+
   sum_of_weights = mixing_ratios.sum(0.0)
   weight_of_other_color = mixing_ratios[0].to_f
   weight_of_unknown_color = mixing_ratios[1].to_f
@@ -333,35 +363,100 @@ puts "Closest mixes:"
 
 nearest_color = sorted_colors[0]
 
+def mix_colors(colors, ratio)
+  curves = colors.map { |color| reflectance_curve_for_color(color) }
+  mix_color_curves(curves, ratio)
+end
+
+def highest_common_divider(array)
+  highest_divider = 0
+  for i in 1..array.min
+    if array.map { |number| number.modulo(i) }.sum == 0
+      highest_divider = i
+    end
+  end
+  highest_divider
+end
+
+def generate_extra_level_of_ratios(array)
+  (array * (MAX_RATIO_PART + 1)).map.with_index do |ratio, index|
+    ratio.dup.push(index / array.size)
+  end
+end
+
+def generate_color_mixes(colors)
+  ratio_array = (1..MAX_RATIO_PART).to_a.map { |el| Array.new(1, el) }
+  if colors.size > 1
+    for i in 2..(colors.size)
+      ratio_array = generate_extra_level_of_ratios(ratio_array)
+    end
+  end
+
+  # Remove max of array = sum of array, which are 1 color arrays!
+  # Removes ratios with HCD > 1, as these would be superfluous
+  ratio_array
+    .reject { |ratio| ratio.max == ratio.sum }
+    .reject { |ratio| highest_common_divider(ratio) > 1 }
+    .push( [1].concat(Array.new(colors.size - 1, 0)) )
+    .map do |ratio|
+      actual_mix = curve_to_rgb(mix_colors(colors, ratio))
+      {
+        actual_mix: actual_mix,
+        actual_mix_color_rgb: Color::RGB.new(actual_mix[0], actual_mix[1], actual_mix[2]),
+        colors: colors,
+        ratio: ratio
+      }
+    end
+end
+
 # Mixes
-mixed_colors = mixing_ratios_to_attempt.map do |ratio|
+MIXING_RATIOS_TO_ATTEMPT.map do |ratio|
   # Get nearest color to perfect complement
   r, g, b = curve_to_rgb(find_inverse_curve(target_color, nearest_color, ratio))
   nearest_mix_color = nearest_available_color(Color::RGB.new(r, g, b))
 
   # Find ACTUAL mix color
-  curves = [
-    reflectance_curve_for_color(nearest_color),
-    reflectance_curve_for_color(nearest_mix_color)
-  ]
-  actual_mix = curve_to_rgb(mix_color_curves(curves, ratio))
+  actual_mix = curve_to_rgb(mix_colors([nearest_color, nearest_mix_color], ratio))
 
   {
     actual_mix: actual_mix,
+    rgb: {
+      red: actual_mix[0] / 255.0,
+      green: actual_mix[1] / 255.0,
+      blue: actual_mix[2] / 255.0
+    },
+    hex: "#{actual_mix[0].to_s(16)}#{actual_mix[1].to_s(16)}#{actual_mix[2].to_s(16)}",
     actual_mix_color_rgb: Color::RGB.new(actual_mix[0], actual_mix[1], actual_mix[2]),
     nearest_mix_color: nearest_mix_color,
     ratio: ratio
   }
 end.sort do |a, b|
   Color::Comparison.distance(target_color[:color_rgb], a[:actual_mix_color_rgb]) <=> Color::Comparison.distance(target_color[:color_rgb], b[:actual_mix_color_rgb])
-end.each do |mix|
-  actual_mix = mix[:actual_mix]
-  ratio = mix[:ratio]
-  mix_hex = "#{actual_mix[0].to_s(16)}#{actual_mix[1].to_s(16)}#{actual_mix[2].to_s(16)}"
-
-  comparison_description = Color::Comparison.distance(target_color[:color_rgb], mix[:actual_mix_color_rgb])
+end.each do |two_color_mix|
+  comparison_description = Color::Comparison.distance(target_color[:color_rgb], two_color_mix[:actual_mix_color_rgb])
   if comparison_description < 2.3
     comparison_description = "#{comparison_description} (not noticeably different)"
   end
-  puts "D#{comparison_description}: ##{mix_hex} = #{ratio[0].to_i}:#{ratio[1].to_i} #{nearest_color[:name]}:#{mix[:nearest_mix_color][:name]}"
+  puts "D#{comparison_description}: ##{two_color_mix[:hex]} = #{two_color_mix[:ratio][0].to_i}:#{two_color_mix[:ratio][1].to_i} #{nearest_color[:name]}:#{two_color_mix[:nearest_mix_color][:name]}"
+
+  # Deep dive on mixes
+  MIXING_RATIOS_TO_ATTEMPT.map do |ratio|
+    r, g, b = curve_to_rgb(find_inverse_curve(target_color, two_color_mix, ratio))
+    nearest_available_color(Color::RGB.new(r, g, b))
+  end.uniq.map do |third_color|
+    generate_color_mixes([nearest_color, two_color_mix[:nearest_mix_color], third_color])
+  end.flatten.sort do |a, b|
+    Color::Comparison.distance(target_color[:color_rgb], a[:actual_mix_color_rgb]) <=> Color::Comparison.distance(target_color[:color_rgb], b[:actual_mix_color_rgb])
+  end.slice(0,4).each do |three_color_mix|
+
+    actual_mix = three_color_mix[:actual_mix]
+    ratio = three_color_mix[:ratio]
+    mix_hex = "#{actual_mix[0].to_s(16)}#{actual_mix[1].to_s(16)}#{actual_mix[2].to_s(16)}"
+    comparison_description = Color::Comparison.distance(target_color[:color_rgb], three_color_mix[:actual_mix_color_rgb])
+    if comparison_description < 2.3
+      comparison_description = "#{comparison_description} (not noticeably different)"
+    end
+    puts "  D#{comparison_description}: ##{mix_hex} = #{ratio[0].to_i}:#{ratio[1].to_i}:#{ratio[2].to_i} #{three_color_mix[:colors][0][:name]}:#{three_color_mix[:colors][1][:name]}:#{three_color_mix[:colors][2][:name]}"
+  end
+
 end
