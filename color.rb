@@ -320,7 +320,10 @@ def reflectance_curve_for_color(color)
 end
 
 def curve_to_rgb(curve)
-  (T * curve).to_a.flatten.map { |component| [((component.real? ? component : component.real) * 255).to_i, 255.0].min }
+  (T * curve).to_a.flatten.map do |component|
+    value = component.real? ? component : component.real
+    [(value * 255).to_i, 255].min
+  end
 end
 
 def find_inverse_curve(target_color, other_color, mixing_ratios)
@@ -450,20 +453,40 @@ def progress_bar_dot
   print "."
 end
 
+def generate_icr(color_a, color_b, ratio)
+  inverse_curve = find_inverse_curve(color_a, color_b, ratio)
+  {
+    inverse_curve: inverse_curve,
+    ratio: ratio
+  }
+end
+
+def check_icr(icr)
+  icr[:inverse_curve].to_a.flatten.any? { |curve_part| curve_part.nan? || (!curve_part.finite?) }
+end
+
 # Mixes
 all_mixes = nearest_colors.map do |query_color|
   puts
   puts "Checking mixes with #{query_color[:name]}"
   MIXING_RATIOS_TO_ATTEMPT.map do |ratio|
     # Get nearest color to perfect complement
-    r, g, b = curve_to_rgb(find_inverse_curve(target_color, query_color, ratio))
+    generate_icr(target_color, query_color, ratio)
+  end.reject do |icr|
+    check_icr(icr)
+  end.map do |icr|
+    r, g, b = curve_to_rgb(icr[:inverse_curve])
     nearest_mix_color = nearest_available_color(Color::RGB.new(r, g, b))
-    create_mix_object([query_color, nearest_mix_color], ratio, target_color)
+    create_mix_object([query_color, nearest_mix_color], icr[:ratio], target_color)
   end.reject do |two_color_mix|
     two_color_mix[:colors].uniq.size == 1
   end.map do |two_color_mix|
     [two_color_mix] + MIXING_RATIOS_TO_ATTEMPT.map do |ratio|
-      r, g, b = curve_to_rgb(find_inverse_curve(target_color, two_color_mix, ratio))
+      generate_icr(target_color, two_color_mix, ratio)
+    end.reject do |icr|
+      check_icr(icr)
+    end.map do |icr|
+      r, g, b = curve_to_rgb(icr[:inverse_curve])
       nearest_available_color(Color::RGB.new(r, g, b))
     end.uniq.reject do |third_color|
       two_color_mix[:colors].map { |color| color[:name] }.include? third_color[:name]
