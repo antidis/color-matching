@@ -250,9 +250,9 @@ paints.each_key do |name|
     color_rgb: color,
     lab: color.to_lab,
     rgb: {
-      red: red / 255.0,
-      green: green / 255.0,
-      blue: blue / 255.0
+      red: red,
+      green: green,
+      blue: blue
     }
   }
 end
@@ -273,9 +273,9 @@ target_color = {
   hex: target_hex,
   color_rgb: Color::RGB.new(red, green, blue),
   rgb: {
-    red: red / 255.0,
-    green: green / 255.0,
-    blue: blue / 255.0
+    red: red,
+    green: green,
+    blue: blue
   }
 }
 target_color[:lab] = target_color[:color_rgb].to_lab
@@ -312,9 +312,9 @@ end
 
 def reflectance_curve_for_color(color)
   rgb = Matrix[
-    [ color[:rgb][:red] ],
-    [ color[:rgb][:green] ],
-    [ color[:rgb][:blue] ]
+    [ color[:rgb][:red] / 255.0 ],
+    [ color[:rgb][:green] / 255.0 ],
+    [ color[:rgb][:blue] / 255.0 ]
   ]
   B12 * rgb
 end
@@ -415,9 +415,9 @@ def create_mix_object(colors, ratio, target_color)
     actual_mix: actual_mix,
     actual_mix_color_rgb: actual_mix_color_rgb,
     rgb: {
-      red: actual_mix[0] / 255.0,
-      green: actual_mix[1] / 255.0,
-      blue: actual_mix[2] / 255.0
+      red: actual_mix[0],
+      green: actual_mix[1],
+      blue: actual_mix[2]
     },
     hex: "#{actual_mix[0].to_s(16)}#{actual_mix[1].to_s(16)}#{actual_mix[2].to_s(16)}",
     colors: colors_with_ratio.map { |item| item[:color] },
