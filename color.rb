@@ -398,7 +398,13 @@ end
 
 def create_mix_object(colors, ratio, target_color)
   actual_mix = curve_to_rgb(mix_colors(colors, ratio))
-  actual_mix_color_rgb = Color::RGB.new(actual_mix[0], actual_mix[1], actual_mix[2])
+  rgb = {
+    red: actual_mix[0],
+    green: actual_mix[1],
+    blue: actual_mix[2]
+  }
+  actual_mix_color_rgb = Color::RGB.new(rgb[:red], rgb[:green], rgb[:blue])
+
   hcd = highest_common_divider(ratio.reject { |p| p == 0 })
   colors_with_ratio = colors.map.with_index do |color, index|
     {
@@ -414,12 +420,8 @@ def create_mix_object(colors, ratio, target_color)
   {
     actual_mix: actual_mix,
     actual_mix_color_rgb: actual_mix_color_rgb,
-    rgb: {
-      red: actual_mix[0],
-      green: actual_mix[1],
-      blue: actual_mix[2]
-    },
-    hex: "#{actual_mix[0].to_s(16)}#{actual_mix[1].to_s(16)}#{actual_mix[2].to_s(16)}",
+    rgb: rgb,
+    hex: "#{rgb[:red].to_s(16)}#{rgb[:green].to_s(16)}#{rgb[:blue].to_s(16)}",
     colors: colors_with_ratio.map { |item| item[:color] },
     ratio: colors_with_ratio.map { |item| item[:ratio_part] },
     distance: Color::Comparison.distance(target_color[:color_rgb], actual_mix_color_rgb)
