@@ -265,7 +265,7 @@ def generate_icr(color_a, color_b, ratio)
   }
 end
 
-def check_icr(icr)
+def icr_invalid?(icr)
   icr[:inverse_curve].to_a.flatten.any? { |curve_part| curve_part.nan? || (!curve_part.finite?) }
 end
 
@@ -277,7 +277,7 @@ all_mixes = nearest_colors.map do |query_color|
     # Get nearest color to perfect complement
     generate_icr(target_color, query_color, ratio)
   end.reject do |icr|
-    check_icr(icr)
+    icr_invalid?(icr)
   end.map do |icr|
     r, g, b = curve_to_rgb(icr[:inverse_curve])
     nearest_mix_color = ColorLibrary.nearest_available_color(Color::RGB.new(r, g, b))
@@ -288,7 +288,7 @@ all_mixes = nearest_colors.map do |query_color|
     [two_color_mix] + MIXING_RATIOS_TO_ATTEMPT.map do |ratio|
       generate_icr(target_color, two_color_mix, ratio)
     end.reject do |icr|
-      check_icr(icr)
+      icr_invalid?(icr)
     end.map do |icr|
       r, g, b = curve_to_rgb(icr[:inverse_curve])
       ColorLibrary.nearest_available_color(Color::RGB.new(r, g, b))
