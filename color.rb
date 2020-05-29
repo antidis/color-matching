@@ -344,6 +344,7 @@ def find_inverse_curve(target_color, other_color, mixing_ratios)
     ) ** (
       sum_of_weights / weight_of_unknown_color
     )
+    inverse_curve_as_a[index] = inverse_curve_as_a[index].real? ? inverse_curve_as_a[index] : inverse_curve_as_a[index].real
   end
 
   matrix_from_one_dimensional_array(inverse_curve_as_a)
