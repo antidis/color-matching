@@ -87,75 +87,6 @@ target_color[:lab] = target_color[:color_rgb].to_lab
 
 nearest_colors = ColorLibrary.nearest_colors(target_color, MAX_RANGE)
 
-def matrix_from_one_dimensional_array(array)
-  Matrix.build(array.size, 1) { |row, col| array[row] }
-end
-
-def mix_color_curves(curves, weights)
-  if weights.nil?
-    weights = Array.new(curves.size, 1)
-  end
-
-  weights.map! { |weight| weight.to_f }
-
-  # Multiply out the weighted curves
-  sum_of_weights = weights.sum.to_f
-  stepper_curve = Array.new(curves[0].to_a.size, 1.0)
-  curves.map.with_index do |curve, weight_index|
-    curve.to_a.flatten.each.with_index do |entry, index|
-      stepper_curve[index] *= entry ** (weights[weight_index] / sum_of_weights)
-    end
-  end
-
-  # Output new matrix
-  matrix_from_one_dimensional_array(stepper_curve)
-end
-
-def reflectance_curve_for_color(color)
-  rgb = Matrix[
-    [ color[:rgb][:red] / 255.0 ],
-    [ color[:rgb][:green] / 255.0 ],
-    [ color[:rgb][:blue] / 255.0 ]
-  ]
-  ColorMixing::B12 * rgb
-end
-
-def curve_to_rgb(curve)
-  (ColorMixing::T * curve).to_a.flatten.map do |component|
-    value = component.real? ? component : component.real
-    [(value * 255).to_i, 255].min
-  end
-end
-
-def find_inverse_curve(target_color, other_color, mixing_ratios)
-  target_curve_as_a = reflectance_curve_for_color(target_color).to_a.flatten
-  other_curve_as_a = reflectance_curve_for_color(other_color).to_a.flatten
-
-  sum_of_weights = mixing_ratios.sum(0.0)
-  weight_of_other_color = mixing_ratios[0].to_f
-  weight_of_unknown_color = mixing_ratios[1].to_f
-  inverse_curve_as_a = []
-  target_curve_as_a.each_index do |index|
-    inverse_curve_as_a[index] = (
-      target_curve_as_a[index] / (
-        other_curve_as_a[index] ** (
-          weight_of_other_color / sum_of_weights
-        )
-      )
-    ) ** (
-      sum_of_weights / weight_of_unknown_color
-    )
-    inverse_curve_as_a[index] = inverse_curve_as_a[index].real? ? inverse_curve_as_a[index] : inverse_curve_as_a[index].real
-  end
-
-  matrix_from_one_dimensional_array(inverse_curve_as_a)
-end
-
-def mix_colors(colors, ratio)
-  curves = colors.map { |color| reflectance_curve_for_color(color) }
-  mix_color_curves(curves, ratio)
-end
-
 def highest_common_divider(array)
   highest_divider = 0
   for i in 1..array.min
@@ -198,7 +129,7 @@ def print_matches(matches)
 end
 
 def create_mix_object(colors, ratio, target_color)
-  actual_mix = curve_to_rgb(mix_colors(colors, ratio))
+  actual_mix = ColorMixing.mix_colors(colors, ratio)
   rgb = {
     red: actual_mix[0],
     green: actual_mix[1],
@@ -244,7 +175,7 @@ def generate_color_mixes(colors, target_color)
     .reject { |ratio| highest_common_divider(ratio) > 1 }
     .push( [1].concat(Array.new(colors.size - 1, 0)) )
     .map do |ratio|
-      actual_mix = curve_to_rgb(mix_colors(colors, ratio))
+      actual_mix = ColorMixing.mix_colors(colors, ratio)
       actual_mix_color_rgb = Color::RGB.new(actual_mix[0], actual_mix[1], actual_mix[2])
       create_mix_object(colors, ratio, target_color)
     end
@@ -258,7 +189,7 @@ def progress_bar_dot
 end
 
 def generate_icr(color_a, color_b, ratio)
-  inverse_curve = find_inverse_curve(color_a, color_b, ratio)
+  inverse_curve = ColorMixing.find_inverse_curve(color_a, color_b, ratio)
   {
     inverse_curve: inverse_curve,
     ratio: ratio
@@ -279,7 +210,7 @@ all_mixes = nearest_colors.map do |query_color|
   end.reject do |icr|
     icr_invalid?(icr)
   end.map do |icr|
-    r, g, b = curve_to_rgb(icr[:inverse_curve])
+    r, g, b = ColorMixing.curve_to_rgb(icr[:inverse_curve])
     nearest_mix_color = ColorLibrary.nearest_available_color(Color::RGB.new(r, g, b))
     create_mix_object([query_color, nearest_mix_color], icr[:ratio], target_color)
   end.reject do |two_color_mix|
@@ -290,7 +221,7 @@ all_mixes = nearest_colors.map do |query_color|
     end.reject do |icr|
       icr_invalid?(icr)
     end.map do |icr|
-      r, g, b = curve_to_rgb(icr[:inverse_curve])
+      r, g, b = ColorMixing.curve_to_rgb(icr[:inverse_curve])
       ColorLibrary.nearest_available_color(Color::RGB.new(r, g, b))
     end.uniq.reject do |third_color|
       two_color_mix[:colors].map { |color| color[:name] }.include? third_color[:name]

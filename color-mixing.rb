@@ -1,3 +1,5 @@
+require 'matrix'
+
 class ColorMixing
 
   B12 = Matrix[
@@ -44,4 +46,75 @@ class ColorMixing
     [ -4.65552 * (10 ** -5), -0.000157894, -0.000806935, -0.002707449, -0.008477628, -0.016058258, -0.02200529, -0.020027434, -0.011137726, 0.003784809, 0.022138944, 0.038965605, 0.063361718, 0.095981626, 0.126280277, 0.148575844, 0.149044804, 0.14239936, 0.122084916, 0.09544734, 0.067421931, 0.035691251, 0.01313278, -0.002384996, -0.009409573, -0.009888983, -0.008379513, -0.005606153, -0.003444663, -0.001921041, -0.000995333, -0.000435322, -0.000224537, -0.000118838, -4.93038 * (10 ** -5), -2.77789 * (10 ** -5) ],
     [ 0.00032594, 0.001107914, 0.005677477, 0.01918448, 0.060978641, 0.121348231, 0.184875618, 0.208804428, 0.197318551, 0.147233899, 0.091819086, 0.046485543, 0.022982618, 0.00665036, -0.005816014, -0.012450334, -0.015524259, -0.016712927, -0.01570093, -0.013647887, -0.011317812, -0.008077223, -0.005863171, -0.003943485, -0.002490472, -0.001440876, -0.000852895, -0.000458929, -0.000248389, -0.000129773, -6.41985 * (10 ** -5), -2.71982 * (10 ** -5), -1.38913 * (10 ** -5), -7.35203 * (10 ** -6), -3.05024 * (10 ** -6), -1.71858 * (10 ** -6) ]
   ]
+
+  def self.matrix_from_one_dimensional_array(array)
+    Matrix.build(array.size, 1) { |row, col| array[row] }
+  end
+
+  def self.curve_to_rgb(curve)
+    (T * curve).to_a.flatten.map do |component|
+      value = component.real? ? component : component.real
+      [(value * 255).to_i, 255].min
+    end
+  end
+
+  def self.reflectance_curve_for_color(color)
+    rgb = Matrix[
+      [ color[:rgb][:red] / 255.0 ],
+      [ color[:rgb][:green] / 255.0 ],
+      [ color[:rgb][:blue] / 255.0 ]
+    ]
+    B12 * rgb
+  end
+
+  def self.mix_color_curves(curves, weights)
+    if weights.nil?
+      weights = Array.new(curves.size, 1)
+    end
+
+    weights.map! { |weight| weight.to_f }
+
+    # Multiply out the weighted curves
+    sum_of_weights = weights.sum.to_f
+    stepper_curve = Array.new(curves[0].to_a.size, 1.0)
+    curves.map.with_index do |curve, weight_index|
+      curve.to_a.flatten.each.with_index do |entry, index|
+        stepper_curve[index] *= entry ** (weights[weight_index] / sum_of_weights)
+      end
+    end
+
+    # Output new matrix
+    self.matrix_from_one_dimensional_array(stepper_curve)
+  end
+
+  def self.find_inverse_curve(target_color, other_color, mixing_ratios)
+    target_curve_as_a = reflectance_curve_for_color(target_color).to_a.flatten
+    other_curve_as_a = reflectance_curve_for_color(other_color).to_a.flatten
+
+    sum_of_weights = mixing_ratios.sum(0.0)
+    weight_of_other_color = mixing_ratios[0].to_f
+    weight_of_unknown_color = mixing_ratios[1].to_f
+    inverse_curve_as_a = []
+    target_curve_as_a.each_index do |index|
+      inverse_curve_as_a[index] = (
+        target_curve_as_a[index] / (
+          other_curve_as_a[index] ** (
+            weight_of_other_color / sum_of_weights
+          )
+        )
+      ) ** (
+        sum_of_weights / weight_of_unknown_color
+      )
+      inverse_curve_as_a[index] = inverse_curve_as_a[index].real? ? inverse_curve_as_a[index] : inverse_curve_as_a[index].real
+    end
+
+    self.matrix_from_one_dimensional_array(inverse_curve_as_a)
+  end
+
+  def self.mix_colors(colors, ratio)
+    curves = colors.map { |color| self.reflectance_curve_for_color(color) }
+    self.curve_to_rgb(self.mix_color_curves(curves, ratio))
+  end
+
+
 end
